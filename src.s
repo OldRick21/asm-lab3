@@ -5,6 +5,9 @@ section .data
 section .text
 global _start
 _start:
+    jmp sys_read
+
+sys_read:
     ;Запись строки
     mov rax, 0  
     mov rdi, 0 
@@ -12,14 +15,20 @@ _start:
     mov rdx, b_size
     syscall 
 
+    ;запись количества байт в строке
+    mov r9, rax
+
     ;ПРоверка на переполнение
     cmp rax, b_size
     jge err
 
+    jmp sys_file_write
+
+sys_file_write:
     ;Откртыие файла
     mov rax, 2
     mov rdi, filename
-    mov rsi, 0x41
+    mov rsi, 0x441
     mov rdx, 0755o
     syscall
 
@@ -30,7 +39,7 @@ _start:
     mov rax, 1
     mov rdi, r8
     mov rsi, buffer
-    mov rdx, b_size
+    mov rdx, r9
     syscall
 
     ;закртие
@@ -38,11 +47,8 @@ _start:
     mov rdi, r8
     syscall
 
-
-
-
-
     jmp _end
+
 err:
     mov eax, 60
 	mov	edi, 1
