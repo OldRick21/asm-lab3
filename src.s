@@ -1,11 +1,15 @@
 section .data
-    buffer times 255 db 0
+    buffer times 6 db 0
     b_size equ $ - buffer
+    buffer2 times 6 db 0
+    b2_size equ $ - buffer2
     filename db "output.txt", 0
-    offset db 33 ;7
+    offset db 33 
+
 section .text
 global _start
 _start:
+    mov r14, 2                    ; состояние: 0-символ, 1-пробел, 2-начало строки
     jmp sys_read
 
 sys_read:
@@ -20,17 +24,13 @@ sys_read:
     ;запись количества байт в строке
     mov r9, rax
 
-    ;ПРоверка на переполнение
-    cmp rax, b_size
-    jge err
-
     ; Проверка на EOF (rax == 0)
     cmp rax, 0
     je _end
 
     mov r10, 0
     mov r11, r9
-    sub r11, 1
+    ;sub r11, 1
 
     ;Сохраняет смещение в регистр
     movzx rax, byte [offset]   
@@ -43,11 +43,26 @@ sys_read:
     jmp caesar_cipher_start
 
 caesar_cipher_start:
+    cmp byte [buffer + r10], 0x0A
+    je skip_space ; sys_file_write
+
+    cmp byte [buffer + r10], 0x20
+    je caesar_cipher_end
+
+    ;Проверка на букву
+    cmp byte [buffer + r10], 0x41
+    jb err
+    cmp byte [buffer + r10], 0x7A
+    jg err
 
     ;Вычисляет регистр буквы
     cmp byte [buffer + r10], 0x5A
     jle upper
     jmp lower
+
+space:
+    add r10, 1
+    jmp caesar_cipher_start
 
 upper:
     ;ПРоверяет выходит ли смещение за пределый алфавита верхнего регистра 
@@ -93,8 +108,64 @@ caesar_cipher_end:
     add r10, 1
     cmp r10, r11
     jb caesar_cipher_start
-    jmp sys_file_write
+    jmp skip_space    
 
+skip_space:
+    mov r15, 0                    ; индекс для buffer2
+    mov r10, 0                    ; индекс для buffer
+    mov rbx, b2_size         ; Загружаем размер buffer2
+
+skip_loop:
+    cmp r10, r9
+    jge sys_file_write
+
+    mov al, byte [buffer + r10]
+    inc r10
+
+    ; Обработка \n
+    cmp al, 0x0A
+    je n_sign
+
+    ; Обработка space
+    cmp al, 0x20
+    je space_sign
+
+    ; Обычный символ
+    cmp r14, 1                   
+    je space_write
+    jmp write
+
+n_sign:
+    mov r14, 2
+    jmp write_n_sign
+
+write_n_sign:
+    cmp r15, rbx
+    jae skip_loop          ; Пропустить, если буфер полон
+    mov byte [buffer2 + r15], 0x0A
+    inc r15
+    jmp skip_loop
+  
+space_sign:
+    cmp r14, 2
+    je skip_loop
+    mov r14, 1
+    jmp skip_loop
+
+space_write:
+    cmp r15, rbx
+    jae write          ; Пропустить, если буфер полон
+    mov byte [buffer2 + r15], 0x20
+    inc r15
+    jmp write 
+
+write: 
+    cmp r15, rbx
+    jae skip_loop          ; Пропустить, если буфер полон
+    mov r14, 0
+    mov byte [buffer2 + r15], al
+    inc r15
+    jmp skip_loop
 
 sys_file_write:
     ;Откртыие файла
@@ -110,8 +181,8 @@ sys_file_write:
     ;Запись в файл
     mov rax, 1
     mov rdi, r8
-    mov rsi, buffer
-    mov rdx, r9
+    mov rsi, buffer2
+    mov rdx, r15
     syscall
 
     ;закртие
@@ -122,10 +193,11 @@ sys_file_write:
     jmp sys_read
 
 err:
-    mov eax, 60
-	mov	edi, 1
-	syscall
+    mov rax, 60
+    mov rdi, 1
+    syscall
+
 _end:
-    mov eax, 60
-	mov	edi, 0
-	syscall
+    mov rax, 60
+    mov rdi, 0
+    syscall
