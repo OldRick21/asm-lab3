@@ -1,5 +1,5 @@
 #!/bin/bash
 make 
-gdb bin -x gdb_script.txt
+./bin output.txt
 make clean
 

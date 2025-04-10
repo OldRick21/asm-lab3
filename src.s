@@ -3,38 +3,53 @@ section .data
     b_size equ $ - buffer
     buffer2 times 6 db 0
     b2_size equ $ - buffer2
-    filename db "output.txt", 0
-    offset db 33 
+    filename_ptr dq 0
+    offset db 33
+
+    ; Сообщения об ошибках
+    error_args_msg db "Error: Missing filename argument", 0xA
+    error_args_len equ $ - error_args_msg
+    
+    error_open_msg db "Error: Failed to open file", 0xA
+    error_open_len equ $ - error_open_msg
+    
+    error_write_msg db "Error: Failed to write to file", 0xA
+    error_write_len equ $ - error_write_msg
+    
+    error_char_msg db "Error: Invalid character detected", 0xA
+    error_char_len equ $ - error_char_msg
 
 section .text
 global _start
 _start:
-    mov r14, 2                    ; состояние: 0-символ, 1-пробел, 2-начало строки
+    mov rcx, [rsp]          ; argc
+    cmp rcx, 2
+    jl error_args           ; Проверка аргументов
+
+    mov rsi, [rsp + 16]     ; argv[1]
+    mov [filename_ptr], rsi
+
+    mov r14, 2
     jmp sys_read
 
 sys_read:
-
-    ;Запись строки
+    ; Чтение из stdin
     mov rax, 0  
     mov rdi, 0 
     mov rsi, buffer
     mov rdx, b_size
     syscall 
 
-    ;запись количества байт в строке
     mov r9, rax
 
-    ; Проверка на EOF (rax == 0)
     cmp rax, 0
     je _end
 
     mov r10, 0
     mov r11, r9
-    ;sub r11, 1
 
-    ;Сохраняет смещение в регистр
+    ; Вычисление смещения
     movzx rax, byte [offset]   
-    ;Обработка смещения чтобы не превышало 26 
     xor rdx, rdx                
     mov rbx, 26                 
     div rbx                     
@@ -44,20 +59,21 @@ sys_read:
 
 caesar_cipher_start:
     cmp byte [buffer + r10], 0x0A
-    je skip_space ; sys_file_write
+    je skip_space
 
     cmp byte [buffer + r10], 0x20
     je caesar_cipher_end
 
-    ;Проверка на букву
+    ; Проверка на допустимые символы
     cmp byte [buffer + r10], 0x41
-    jb err
+    jb invalid_char
     cmp byte [buffer + r10], 0x7A
-    jg err
-
-    ;Вычисляет регистр буквы
+    jg invalid_char
     cmp byte [buffer + r10], 0x5A
     jle upper
+    cmp byte [buffer + r10], 0x61
+    jl invalid_char          ; Проверка на символы между Z и a
+
     jmp lower
 
 space:
@@ -160,39 +176,76 @@ space_write:
     jmp write 
 
 write: 
+    mov r14, 0
     cmp r15, rbx
     jae skip_loop          ; Пропустить, если буфер полон
-    mov r14, 0
     mov byte [buffer2 + r15], al
     inc r15
     jmp skip_loop
 
 sys_file_write:
-    ;Откртыие файла
+    ; Открытие файла
     mov rax, 2
-    mov rdi, filename
-    mov rsi, 0x441
+    mov rdi, [filename_ptr]
+    mov rsi, 0x441          ; O_WRONLY | O_CREAT | O_APPEND
     mov rdx, 0755o
     syscall
 
-    ;Сохранения дискриптора
+    cmp rax, 0
+    jl open_error           ; Обработка ошибки открытия
     mov r8, rax
 
-    ;Запись в файл
+    ; Запись в файл
     mov rax, 1
     mov rdi, r8
     mov rsi, buffer2
     mov rdx, r15
     syscall
 
-    ;закртие
+    cmp rax, 0
+    jl write_error          ; Обработка ошибки записи
+
+    ; Закрытие файла
     mov rax, 3
     mov rdi, r8
     syscall
 
     jmp sys_read
 
-err:
+; Обработчики ошибок
+error_args:
+    mov rax, 1
+    mov rdi, 2
+    mov rsi, error_args_msg
+    mov rdx, error_args_len
+    syscall
+    jmp exit_error
+
+open_error:
+    mov rax, 1
+    mov rdi, 2
+    mov rsi, error_open_msg
+    mov rdx, error_open_len
+    syscall
+    jmp exit_error
+
+write_error:
+    mov rax, 1
+    mov rdi, 2
+    mov rsi, error_write_msg
+    mov rdx, error_write_len
+    syscall
+    jmp exit_error
+
+invalid_char:
+    mov rax, 1
+    mov rdi, 2
+    mov rsi, error_char_msg
+    mov rdx, error_char_len
+    syscall
+    jmp exit_error
+
+exit_error:
     mov rax, 60
     mov rdi, 1
     syscall
