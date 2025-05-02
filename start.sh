@@ -1,5 +1,5 @@
 #!/bin/bash
-make 
-./bin output.txt
+make
+./bin
 make clean
 

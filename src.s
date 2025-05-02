@@ -1,14 +1,15 @@
 section .data
-    buffer times 6 db 0
+    buffer times 10 db 0
     b_size equ $ - buffer
-    buffer2 times 6 db 0
+    buffer2 times 10 db 0
     b2_size equ $ - buffer2
     filename_ptr dq 0
     offset db 33
 
     ; Сообщения об ошибках
-    error_args_msg db "Error: Missing filename argument", 0xA
-    error_args_len equ $ - error_args_msg
+    prompt db "Enter filename: "          ; Приглашение для ввода
+    prompt_len equ $ - prompt
+    filename_buffer times 256 db 0        ; Буфер для имени файла
     
     error_open_msg db "Error: Failed to open file", 0xA
     error_open_len equ $ - error_open_msg
@@ -22,13 +23,35 @@ section .data
 section .text
 global _start
 _start:
-    mov rcx, [rsp]          ; argc
-    cmp rcx, 2
-    jl error_args           ; Проверка аргументов
+    mov rax, 1
+    mov rdi, 1
+    mov rsi, prompt
+    mov rdx, prompt_len
+    syscall
 
-    mov rsi, [rsp + 16]     ; argv[1]
-    mov [filename_ptr], rsi
+    ; Чтение имени файла
+    mov rax, 0              ; sys_read
+    mov rdi, 0              ; stdin
+    mov rsi, filename_buffer
+    mov rdx, 256            ; максимальная длина
+    syscall
 
+    ; Обработка введенного имени (замена \n на \0)
+    mov rdi, filename_buffer
+
+.process_filename_loop:
+    cmp byte [rdi], 0x0A    ; Ищем символ новой строки
+    je .replace_newline
+    inc rdi
+    cmp rdi, filename_buffer + 256
+    jb .process_filename_loop
+    jmp .end_process
+
+.replace_newline:
+    mov byte [rdi], 0       ; Заменяем на нулевой байт
+
+.end_process:
+    mov qword [filename_ptr], filename_buffer ; Сохраняем указатель
     mov r14, 2
     jmp sys_read
 
@@ -60,6 +83,9 @@ sys_read:
 caesar_cipher_start:
     cmp byte [buffer + r10], 0x0A
     je skip_space
+
+    cmp byte [buffer + r10], 0x09
+    je caesar_cipher_end
 
     cmp byte [buffer + r10], 0x20
     je caesar_cipher_end
@@ -146,6 +172,10 @@ skip_loop:
     cmp al, 0x20
     je space_sign
 
+    ; Обработка space
+    cmp al, 0x09
+    je space_sign
+
     ; Обычный символ
     cmp r14, 1                   
     je space_write
@@ -213,13 +243,6 @@ sys_file_write:
     jmp sys_read
 
 ; Обработчики ошибок
-error_args:
-    mov rax, 1
-    mov rdi, 2
-    mov rsi, error_args_msg
-    mov rdx, error_args_len
-    syscall
-    jmp exit_error
 
 open_error:
     mov rax, 1

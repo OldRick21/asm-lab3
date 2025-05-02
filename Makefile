@@ -12,7 +12,7 @@ EXE = bin
 all: $(SRCS) $(EXE)
 
 clean:
-	rm -rf $(EXE) $(OBJS)
+	rm -rf $(EXE) $(OBJS) 
 
 $(EXE): $(OBJS)
 	$(LD) $(LDFLAGS) $(OBJS) -o $@
